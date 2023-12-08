@@ -7,6 +7,10 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Sprout.Exam.Business.DataTransferObjects;
 using Sprout.Exam.Common.Enums;
+using Sprout.Exam.WebApp.Data.DomainServices;
+using AutoMapper;
+using Sprout.Exam.WebApp.Models;
+using Abp.Domain.Entities;
 
 namespace Sprout.Exam.WebApp.Controllers
 {
@@ -15,16 +19,24 @@ namespace Sprout.Exam.WebApp.Controllers
     [ApiController]
     public class EmployeesController : ControllerBase
     {
+        private readonly IMapper ObjectMapper;
+        private readonly IEmployeeDomainService employeeDomainService;
+
+        public EmployeesController(IEmployeeDomainService employeeDomainService, IMapper ObjectMapper)
+        {
+            this.employeeDomainService = employeeDomainService;
+            this.ObjectMapper = ObjectMapper;
+        }
 
         /// <summary>
         /// Refactor this method to go through proper layers and fetch from the DB.
         /// </summary>
         /// <returns></returns>
         [HttpGet]
-        public async Task<IActionResult> Get()
+        public async Task<IActionResult> GetAllAsync()
         {
-            var result = await Task.FromResult(StaticEmployees.ResultList);
-            return Ok(result);
+            var employees = await employeeDomainService.GetAllAsync();
+            return Ok(MapEntityListDto(employees));
         }
 
         /// <summary>
@@ -32,10 +44,10 @@ namespace Sprout.Exam.WebApp.Controllers
         /// </summary>
         /// <returns></returns>
         [HttpGet("{id}")]
-        public async Task<IActionResult> GetById(int id)
+        public async Task<IActionResult> GetById(Guid id)
         {
-            var result = await Task.FromResult(StaticEmployees.ResultList.FirstOrDefault(m => m.Id == id));
-            return Ok(result);
+            var employees = await employeeDomainService.GetAsync(id);
+            return Ok(MapEntityDto(employees));
         }
 
         /// <summary>
@@ -43,15 +55,11 @@ namespace Sprout.Exam.WebApp.Controllers
         /// </summary>
         /// <returns></returns>
         [HttpPut("{id}")]
-        public async Task<IActionResult> Put(EditEmployeeDto input)
+        public async Task<IActionResult> Put(UpdateEmployeeDto input)
         {
-            var item = await Task.FromResult(StaticEmployees.ResultList.FirstOrDefault(m => m.Id == input.Id));
-            if (item == null) return NotFound();
-            item.FullName = input.FullName;
-            item.Tin = input.Tin;
-            item.Birthdate = input.Birthdate.ToString("yyyy-MM-dd");
-            item.TypeId = input.TypeId;
-            return Ok(item);
+            var employee = MapEntity(input);
+            var employeeDto = await employeeDomainService.UpdateAsync(employee);
+            return Ok(MapEntityDto(employeeDto));
         }
 
         /// <summary>
@@ -61,36 +69,21 @@ namespace Sprout.Exam.WebApp.Controllers
         [HttpPost]
         public async Task<IActionResult> Post(CreateEmployeeDto input)
         {
-
-           var id = await Task.FromResult(StaticEmployees.ResultList.Max(m => m.Id) + 1);
-
-            StaticEmployees.ResultList.Add(new EmployeeDto
-            {
-                Birthdate = input.Birthdate.ToString("yyyy-MM-dd"),
-                FullName = input.FullName,
-                Id = id,
-                Tin = input.Tin,
-                TypeId = input.TypeId
-            });
-
-            return Created($"/api/employees/{id}", id);
+            var entity = MapEntity(input);
+            await employeeDomainService.CreateAsync(entity);
+            return Ok(MapEntityDto(entity));
         }
-
 
         /// <summary>
         /// Refactor this method to go through proper layers and perform soft deletion of an employee to the DB.
         /// </summary>
         /// <returns></returns>
         [HttpDelete("{id}")]
-        public async Task<IActionResult> Delete(int id)
+        public async Task<IActionResult> Delete(Guid id)
         {
-            var result = await Task.FromResult(StaticEmployees.ResultList.FirstOrDefault(m => m.Id == id));
-            if (result == null) return NotFound();
-            StaticEmployees.ResultList.RemoveAll(m => m.Id == id);
+            await employeeDomainService.DeleteAsync(id);
             return Ok(id);
         }
-
-
 
         /// <summary>
         /// Refactor this method to go through proper layers and use Factory pattern
@@ -100,23 +93,76 @@ namespace Sprout.Exam.WebApp.Controllers
         /// <param name="workedDays"></param>
         /// <returns></returns>
         [HttpPost("{id}/calculate")]
-        public async Task<IActionResult> Calculate(int id,decimal absentDays,decimal workedDays)
+        public async Task<IActionResult> Calculate(Guid id,decimal absentDays,decimal workedDays)
         {
-            var result = await Task.FromResult(StaticEmployees.ResultList.FirstOrDefault(m => m.Id == id));
+            var employee = await employeeDomainService.GetAsync(id);
 
-            if (result == null) return NotFound();
-            var type = (EmployeeType) result.TypeId;
+            if (employee == null) 
+                return NotFound();
+
+            var type = (EmployeeType)employee.TypeId;
+
             return type switch
             {
                 EmployeeType.Regular =>
                     //create computation for regular.
-                    Ok(25000),
+                    Ok(Calculate(type, absentDays, workedDays)),
                 EmployeeType.Contractual =>
                     //create computation for contractual.
-                    Ok(20000),
+                    Ok(Calculate(type, absentDays, workedDays)),
                 _ => NotFound("Employee Type not found")
             };
 
+        }
+
+        private decimal Calculate(EmployeeType type, decimal absentDays, decimal workedDays)
+        {
+            switch (type)
+            {
+                case EmployeeType.Regular:
+                    decimal monthlySalary = 20000;
+                    decimal dailyDeduction = monthlySalary / 22;
+                    decimal taxDeduction = monthlySalary * 0.12m;
+                    decimal calculatedSalaryRegular = monthlySalary - (absentDays * dailyDeduction) - taxDeduction;
+                    calculatedSalaryRegular = Math.Round(calculatedSalaryRegular, 2);
+
+                    return calculatedSalaryRegular;
+
+                case EmployeeType.Contractual:
+                    decimal dailyRate = 500;
+                    decimal calculatedSalaryContractual = workedDays * dailyRate;
+                    calculatedSalaryContractual = Math.Round(calculatedSalaryContractual, 2);
+
+                    return calculatedSalaryContractual;
+
+                default:
+                    return 0;
+            }
+        }
+
+        private EmployeeDto MapEntityDto(Employee entity)
+        {
+            return ObjectMapper.Map<Employee, EmployeeDto>(entity);
+        }
+
+        private List<EmployeeDto> MapEntityListDto(List<Employee> entity)
+        {
+            return ObjectMapper.Map<List<Employee>, List<EmployeeDto>>(entity);
+        }
+
+        private Employee MapEntity(EmployeeDto entity)
+        {
+            return ObjectMapper.Map<EmployeeDto, Employee>(entity);
+        }
+
+        private Employee MapEntity(CreateEmployeeDto entity)
+        {
+            return ObjectMapper.Map<CreateEmployeeDto, Employee>(entity);
+        }
+
+        private Employee MapEntity(UpdateEmployeeDto entity)
+        {
+            return ObjectMapper.Map<UpdateEmployeeDto, Employee>(entity);
         }
 
     }

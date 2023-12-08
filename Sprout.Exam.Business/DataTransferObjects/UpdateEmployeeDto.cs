@@ -1,11 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using Abp.Application.Services.Dto;
 
 namespace Sprout.Exam.Business.DataTransferObjects
 {
-    public class EditEmployeeDto: BaseSaveEmployeeDto
+    public class UpdateEmployeeDto: BaseSaveEmployeeDto
     {
-        public int Id { get; set; }
+        public Guid Id { get; set; }
     }
 }

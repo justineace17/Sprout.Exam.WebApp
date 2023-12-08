@@ -12,6 +12,13 @@ using Microsoft.Extensions.Hosting;
 using Sprout.Exam.WebApp.Data;
 using Sprout.Exam.WebApp.Models;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
+using Microsoft.OpenApi.Models;
+using Sprout.Exam.WebApp.Data.DomainServices;
+using System;
+using AutoMapper;
+using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.Http;
+using System.Net;
 
 namespace Sprout.Exam.WebApp
 {
@@ -28,7 +35,11 @@ namespace Sprout.Exam.WebApp
         public void ConfigureServices(IServiceCollection services)
         {
             services.AddControllers();
-            services.AddSwaggerGen();
+            services.AddSwaggerGen(option => {
+                option.SwaggerDoc("v1", new OpenApiInfo { Title = "Sprout.Exam.WebApp", Version = "v1" });
+                option.DocInclusionPredicate((docName, description) => true);
+                option.CustomSchemaIds(type => type.FullName);
+            });
 
             services.AddDbContext<ApplicationDbContext>(options =>
                 options.UseSqlServer(
@@ -38,6 +49,18 @@ namespace Sprout.Exam.WebApp
 
             services.AddDefaultIdentity<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = true)
                 .AddEntityFrameworkStores<ApplicationDbContext>();
+
+            services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
+            services.AddScoped<IEmployeeDomainService, EmployeeDomainService>();
+            services.AddScoped<IMapper, Mapper>();
+
+            var mapperConfig = new MapperConfiguration(opt =>
+            {
+                opt.AddProfile(new ApplicationMapProfile());
+            });
+
+            IMapper mapper = mapperConfig.CreateMapper();
+            services.AddSingleton(mapper);
 
             services.AddIdentityServer()
                 .AddApiAuthorization<ApplicationUser, ApplicationDbContext>();
@@ -98,6 +121,17 @@ namespace Sprout.Exam.WebApp
                     spa.UseReactDevelopmentServer(npmScript: "start");
                 }
             });
+
+            app.UseExceptionHandler(c => c.Run(async context =>
+            {
+                var exception = context.Features.Get<IExceptionHandlerPathFeature>().Error;
+                var response = new { Msg = exception.Message };
+
+                context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+
+                await context.Response.WriteAsJsonAsync(response);
+
+            }));
         }
     }
 }

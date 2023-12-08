@@ -2,7 +2,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.OpenApi.Extensions;
 using Sprout.Exam.Business.DataTransferObjects;
+using Sprout.Exam.Common.Enums;
 
 namespace Sprout.Exam.WebApp
 {
@@ -14,7 +16,7 @@ namespace Sprout.Exam.WebApp
             {
                 Birthdate = "1993-03-25",
                 FullName = "Jane Doe",
-                Id = 1,
+                Id = Guid.NewGuid(),
                 Tin = "123215413",
                 TypeId = 1
             },
@@ -22,7 +24,7 @@ namespace Sprout.Exam.WebApp
             {
                 Birthdate = "1993-05-28",
                 FullName = "John Doe",
-                Id = 2,
+                 Id = Guid.NewGuid(),
                 Tin = "957125412",
                 TypeId = 2
             }
